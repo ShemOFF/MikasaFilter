@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Proxy Package Manager (Links for {{package}})</title>
+</head>
+<body>
+    <h1>Links for {{package}}</h1>
+    {% for package in valid_package %}
+        <a href="{{valid_package[package]}}">{{package}}</a>
+        <br>
+    {% endfor %}
+</body>
+</html>

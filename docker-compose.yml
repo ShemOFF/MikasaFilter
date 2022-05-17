@@ -1,0 +1,27 @@
+version: '3'
+services:
+  mikasa-filter:
+    image: mikasa-filter-image
+    build: ./app
+    container_name: mikasa-filter
+    environment:
+      # для отладки (при запуске в релиз убрать!)
+      # - FLASK_ENV=development
+      ## Позволяет отслеживать процесс работы приложения в командной строке
+      - PYTHONUNBUFFERED=True
+      ##
+    # Перезапускаем сервис в случае падения
+    restart: on-failure
+    volumes:
+      - ./app:/app
+    ports:
+      - "80:5000"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    command: python app.py

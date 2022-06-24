@@ -1,23 +1,70 @@
 class Base:
-    from project_config import UNIX_CHECK_DATETIME
+    from project_config import DEFAULT_DATE_PATTERN, DEFAULT_MORATORIUM_DATE
     import datetime
+    from dateutil.relativedelta import relativedelta
     import json
     import requests
     from urllib import parse
     import time
+    from abc import abstractmethod
 
     REQUEST_REPEAT = 5
 
-    def __init__(self, url_org_repo: str, date_pattern: str):
+    def __conversion_moratorium_date_from_shift(self, custom_moratorium_date: str):
+        try:
+            month: int = 0
+            date_split: list = custom_moratorium_date.split('-')
+
+            if len(date_split) == 1 and date_split[0].isdigit():
+                day = int(date_split[0])
+            elif len(date_split) == 2 and date_split[0].isdigit() and date_split[1].isdigit():
+                day = int(date_split[0])
+                month = int(date_split[1])
+            else:
+                self.moratorium_date = 'Error: incorrect date'
+                return
+
+            if day > 31 or day < 0:
+                self.moratorium_date = 'Error: incorrect day (range {0-31})'
+                return
+            if month > 96 or month < 0:
+                self.moratorium_date = 'Error: incorrect month (range{0-96})'
+                return
+
+            date_difference = self.datetime.date.today() + self.relativedelta(months=-month, days=-day)
+            self.moratorium_date = date_difference.strftime(self.DEFAULT_DATE_PATTERN)
+
+        except Exception:
+            self.moratorium_date = 'Error: Exception'
+
+    def __init__(self, url_org_repo: str,
+                 package_date_pattern: str = None,
+                 custom_moratorium_date: str = None,
+                 package_name: str = None):
+
         self.url_org_repo = url_org_repo
-        self.date_pattern = date_pattern
+        self.package_date_pattern = package_date_pattern
+        if custom_moratorium_date:
+            self.__conversion_moratorium_date_from_shift(custom_moratorium_date)
+        else:
+            self.moratorium_date = self.DEFAULT_MORATORIUM_DATE
+        self.package_name = package_name
 
     def __del__(self):
         self.url_org_repo = None
         del self.url_org_repo
 
-        self.date_pattern = None
-        del self.date_pattern
+        self.package_date_pattern = None
+        del self.package_date_pattern
+
+        self.custom_moratorium_date = None
+        del self.custom_moratorium_date
+
+        self.moratorium_date = None
+        del self.moratorium_date
+
+        self.package_name = None
+        del self.package_name
 
     def add_url_org_and_path(self, *paths: str) -> str:
         result_url = self.parse.urljoin(self.url_org_repo, '/'.join(paths))
@@ -29,10 +76,18 @@ class Base:
 
     def check_date_release(self, date_release: str) -> bool:
         try:
-            version_date_release = self.datetime.datetime.strptime(date_release, self.date_pattern)
+            if not self.package_date_pattern or not self.moratorium_date:
+                return False
+
+            check_moratorium_date = self.datetime.datetime.strptime(self.moratorium_date,
+                                                                    self.DEFAULT_DATE_PATTERN)
+            unix_time_moratorium_date = self.datetime.datetime.timestamp(check_moratorium_date)
+
+            version_date_release = self.datetime.datetime.strptime(date_release,
+                                                                   self.package_date_pattern)
             unix_time_date_release = self.datetime.datetime.timestamp(version_date_release)
 
-            if unix_time_date_release >= self.UNIX_CHECK_DATETIME:
+            if unix_time_date_release >= unix_time_moratorium_date:
                 return False
             return True
         except (ValueError, Exception):
@@ -95,19 +150,38 @@ class Base:
         except (ValueError, Exception):
             return {"error": "Not found"}
 
+    @abstractmethod
+    def get_repo_corrected_json(self, *args, **kwargs):
+        pass
+
+    @abstractmethod
+    def get_date_upload_package(self, *args, **kwargs):
+        pass
+
 
 class NPM(Base):
 
-    def __init__(self, url_org_repo: str, date_pattern: str):
-        super().__init__(url_org_repo, date_pattern)
+    def get_repo_npm_json(self):
+        if self.package_name:
+            url = self.add_url_org_and_path(self.package_name)
+            self.json_package = self.get_repo_json(url)
+        else:
+            self.json_package = {"error": "Not self.package_name object"}
+
+    def __init__(self, url_org_repo: str,
+                 package_date_pattern: str = None,
+                 custom_moratorium_date: str = None,
+                 package_name: str = None):
+        super().__init__(url_org_repo, package_date_pattern, custom_moratorium_date, package_name)
         self.json_package: dict = {}
+        self.get_repo_npm_json()
 
     def __del__(self):
         super().__del__()
         self.json_package = None
         del self.json_package
 
-    def __check_valid_time(self, version: str, date_release: str) -> dict:
+    def __get_valid_time(self, version: str, date_release: str) -> dict:
         max_version = ''
         if self.check_date_release(date_release=date_release):
             if 'created' == version or 'modified' == version:
@@ -125,7 +199,6 @@ class NPM(Base):
             return {'status': False, 'version': ''}
 
     def __del_bad_version_package(self, version: str):
-        # if 'time' in self.json_package:
         self.json_package['time'].pop(version, None)
         if 'versions' in self.json_package:
             self.json_package['versions'].pop(version, None)
@@ -138,17 +211,14 @@ class NPM(Base):
             end_time_element: str = list(self.json_package['time'].keys())[-1]
             self.json_package['time']['modified'] = self.json_package['time'][end_time_element]
 
-    def get_repo_corrected_json(self, package_name: str) -> dict:
-        url = self.add_url_org_and_path(package_name)
-        self.json_package = self.get_repo_json(url)
-
+    def get_repo_corrected_json(self) -> dict:
         if 'error' in self.json_package:
             return {"error": "Not found"}
         max_version: str = '0.0.0'
         json_time = self.json_package['time'].copy()
         for version in json_time:
             date_release = json_time[version]
-            result_check_valid_time = self.__check_valid_time(version, date_release)
+            result_check_valid_time = self.__get_valid_time(version, date_release)
             if not result_check_valid_time['status']:
                 self.__del_bad_version_package(version)
                 continue
@@ -159,47 +229,91 @@ class NPM(Base):
         self.__finally_edit_package_json(max_version)
         return self.json_package.copy()
 
-    def check_valid_tgz(self, package: str, tgz_name: str) -> bool:
-        version_smash = package.split('/')[-1] + "-"
+    def check_valid_tgz(self, tgz_name: str) -> bool:
+        version_smash = self.package_name.split('/')[-1] + "-"
         version = tgz_name.split(version_smash)[-1]
-        url_check = self.add_url_org_and_path(package)
-        json_repo = self.get_repo_json(url_check)
-        if 'time' not in json_repo:
+
+        if 'time' not in self.json_package:
             return False
-        time_version = json_repo['time']
+        time_version = self.json_package['time']
         if self.check_date_release(time_version[version]):
             return True
         else:
             return False
 
+    def get_date_upload_package(self, moratorium: bool = True) -> dict:
+        if moratorium:
+            self.get_repo_corrected_json()
+        if 'error' in self.json_package:
+            return {"error": "Not found"}
+        return self.json_package['time'].copy()
+
 
 class Pipe(Base):
 
-    def get_repo_pypi_json(self, package_name: str) -> dict:
-        url = self.add_url_org_and_path('pypi', package_name, 'json')
-        json_package = self.get_repo_json(url)
-        return json_package
+    def get_repo_pypi_json(self) -> dict:
+        if self.package_name:
+            url = self.add_url_org_and_path('pypi', self.package_name, 'json')
+            json_package = self.get_repo_json(url)
+            return json_package
+        else:
+            return {"error": "Not self.package_name object"}
 
-    def __check_platform_package_from_version(self, platform_version: dict) -> dict:
+    @staticmethod
+    def __get_correct_url_from_platform_package(platform_version: dict) -> str:
+        url = platform_version['url']
+        if url[:8] != r'https://':
+            url = r'https://' + platform_version['url']
+        return url
+
+    @staticmethod
+    def __get_date_upload_from_platform_package(platform_version: dict) -> str:
+        return platform_version['upload_time']
+
+    def __get_correct_from_platform_package(self, all_platform_version: dict,
+                                            type_return: str = 'url',
+                                            check_date_release: bool = True) -> dict:
+        if type_return == 'url':
+            function_result = self.__get_correct_url_from_platform_package
+        elif type_return == 'date':
+            function_result = self.__get_date_upload_from_platform_package
+        else:
+            function_result = None
         valid_package: dict = {}
-        for platform_version in platform_version:
+        for platform_version in all_platform_version:
             date_release = platform_version['upload_time_iso_8601']
-            if not self.check_date_release(date_release=date_release):
+            if check_date_release:
+                result_check_date: bool = self.check_date_release(date_release=date_release)
+            else:
+                result_check_date: bool = True
+            if not result_check_date:
                 continue
             filename = platform_version['filename']
-            url = platform_version['url']
-            if url[:8] != r'https://':
-                url = r'https://' + platform_version['url']
-            valid_package[filename] = url
+            valid_package[filename] = function_result(platform_version)
         return valid_package
 
-    def get_repo_corrected_json(self, package_name: str) -> dict:
+    def get_repo_corrected_json(self, type_return: str = 'url',
+                                check_date_release: bool = True) -> dict:
+        return_options: list = ['url', 'date']
+        if type_return not in return_options:
+            return {}
         valid_package: dict = {}
-        json_package = self.get_repo_pypi_json(package_name)
+        json_package = self.get_repo_pypi_json()
         if 'error' in json_package:
             return {}
         version_release = json_package['releases']
         for full_version in version_release:
-            platform_version = version_release[full_version]
-            valid_package.update(self.__check_platform_package_from_version(platform_version))
+            all_platform_version = version_release[full_version]
+            valid_package.update(self.__get_correct_from_platform_package(all_platform_version,
+                                                                          type_return, check_date_release))
         return valid_package
+
+    def get_date_upload_package(self, moratorium: bool = True) -> dict:
+        if moratorium:
+            result = self.get_repo_corrected_json(type_return='date')
+        else:
+            result = self.get_repo_corrected_json(type_return='date', check_date_release=False)
+
+        if not result:
+            return {"error": "Not found"}
+        return result

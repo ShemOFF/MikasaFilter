@@ -1,10 +1,5 @@
-import datetime
-
-check_date = '18-02-2022'
-check_date = datetime.datetime.strptime(check_date, '%d-%m-%Y')
-UNIX_CHECK_DATETIME = datetime.datetime.timestamp(check_date)
-del datetime
-del check_date
+DEFAULT_MORATORIUM_DATE = '18-02-2022'
+DEFAULT_DATE_PATTERN = '%d-%m-%Y'
 
 NPM_ORG_REPO_URL = r'https://registry.npmjs.org/'
 NPM_ORG_DATE_TIME_PATTERN = r'%Y-%m-%dT%H:%M:%S.%fZ'

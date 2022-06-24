@@ -121,7 +121,7 @@
     http://<url>:<port>/npm-api/date-upload-all/<package_name>
     ```
     
-##Запуск фильтра
+## Запуск фильтра
 ***
 - ### Windows:
 ```bash

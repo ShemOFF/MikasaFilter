@@ -96,6 +96,7 @@ class Base:
     def get_repo_text(self, url: str) -> str:
         try:
             request_npm = self.requests.get(url)
+            request_npm.close()
             if not request_npm.ok:
                 return 'error'
             return request_npm.text
@@ -105,6 +106,7 @@ class Base:
     def post_repo_text(self, url: str, data: bytes) -> str:
         try:
             request_npm = self.requests.post(url, data=data)
+            request_npm.close()
             if not request_npm.ok:
                 return 'error'
             return request_npm.text

@@ -7,6 +7,7 @@ from project_config import NPM_ORG_REPO_URL, NPM_ORG_DATE_TIME_PATTERN, NPM_LOCA
 app = Flask(__name__)
 
 
+
 @app.route(f'/')
 def main_index():
     return render_template('main.html')

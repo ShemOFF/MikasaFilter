@@ -101,7 +101,7 @@
        http://<url>:<port>/pypi-api/день-месяц/date-upload-moratorium/<package_name>
        ```
 
-       - ###Json
+       - ### Json
        ```
        http://<url>:<port>/pypi-api/день-месяц/date-upload-moratorium/json/<package_name>
        ```
